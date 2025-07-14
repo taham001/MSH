@@ -652,7 +652,7 @@ signal(SIGINT,  SIG_IGN);
         int index = 0;
         char prev = '[';
 
-        while (scanf("%c", &c) == 1 && ((index > 0 ? buffer[index - 1] == '\\' : 0) || c != '\n'))
+        while ((result=scanf("%c", &c))!=EOF && ((index > 0 ? buffer[index - 1] == '\\' : 0) || c != '\n'))
         {
         
             if (index >= 1023)
@@ -675,6 +675,9 @@ signal(SIGINT,  SIG_IGN);
                 prev = '[';
             }
             buffer[index++] = c;
+        }
+         if(result==EOF){
+            exit(0);
         }
 
         buffer[index] = '\0';
