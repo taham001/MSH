@@ -270,9 +270,16 @@ int execute_command(Node *node, pid_t pgid, int is_background)
     pid_t pid = fork();
     if (pid == 0)
     {
+        signal(SIGTSTP, SIG_DFL);  
+signal(SIGINT,  SIG_DFL); 
+signal(SIGTTIN, SIG_DFL);  
+signal(SIGTTOU, SIG_DFL);
         if (pgid == 0)
             pgid = getpid();
         setpgid(0, pgid);
+        if (!is_background) {
+    tcsetpgrp(STDIN_FILENO, pgid); 
+}
         char *path = append_str("/bin/MSH/", node->command[0]);
         execv(path, node->command);
         perror("exec failed");
@@ -290,7 +297,17 @@ int execute_command(Node *node, pid_t pgid, int is_background)
     int status;
     if (!is_background)
     {
-        waitpid(pid, &status, 0);
+        tcsetpgrp(STDIN_FILENO, pgid);            
+    waitpid(pid, &status, WUNTRACED);        
+    tcsetpgrp(STDIN_FILENO, getpgrp());
+ if (WIFSTOPPED(status)) {
+    
+    track_background_pid(pid);
+    add_mapping(pgid, pid);
+    add_job(pgid, 1);
+    printf("\n[Stopped] pgid=%d moved to background\n", pgid);
+    return 0;
+}
         return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
     }
     return 0;
@@ -377,6 +394,14 @@ int execute_ast(Node *node, pid_t pgid, int is_background)
                 pgid = getpid();
             }
             setpgid(0, pgid);
+            if (!is_background) {
+    tcsetpgrp(STDIN_FILENO, pgid);
+}
+
+signal(SIGTSTP, SIG_DFL);  
+signal(SIGINT,  SIG_DFL);  
+signal(SIGTTIN, SIG_DFL); 
+signal(SIGTTOU, SIG_DFL);
             if (node->redir_type == 3)
                 dup2(fd, STDIN_FILENO);
             else if (node->redir_type == 4)
@@ -419,7 +444,18 @@ int execute_ast(Node *node, pid_t pgid, int is_background)
             int status;
             if (!is_background)
             {
-                waitpid(pid, &status, 0);
+               tcsetpgrp(STDIN_FILENO, pgid);
+waitpid(pid,&status, WUNTRACED);
+tcsetpgrp(STDIN_FILENO, getpgrp());
+if (WIFSTOPPED(status)) {
+    
+    track_background_pid(pid);
+     int try = add_mapping(pgid, pid);
+                if (try)
+                    add_job(pgid, 1);
+    printf("\n[Stopped] pgid=%d moved to background\n", pgid);
+    return 0;
+}
                 close(fd);
                 return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
             }
@@ -454,6 +490,14 @@ int execute_ast(Node *node, pid_t pgid, int is_background)
                 if (pgid == 0)
                     pgid = getpid();
                 setpgid(0, pgid);
+                if (!is_background) {
+    tcsetpgrp(STDIN_FILENO, getpid());
+}
+
+signal(SIGTSTP, SIG_DFL);
+signal(SIGINT,  SIG_DFL);
+signal(SIGTTIN, SIG_DFL);
+signal(SIGTTOU, SIG_DFL);
 
                 if (i > 0)
                 {
@@ -506,7 +550,19 @@ int execute_ast(Node *node, pid_t pgid, int is_background)
             int status;
             for (int i = 0; i < count; i++)
             {
-                waitpid(pids[i], &status, 0);
+                tcsetpgrp(STDIN_FILENO, pgid);
+waitpid(pids[i],&status, WUNTRACED);
+tcsetpgrp(STDIN_FILENO, getpgrp());
+if (WIFSTOPPED(status)) {
+  
+    track_background_pid(pids[i]);
+    int try = add_mapping(pgid, pids[i]);
+                if (try)
+                    add_job(pgid, 1);
+    printf("\n[Stopped] pgid=%d moved to background\n", pgid);
+    return 0;
+}
+               
             }
             return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
         }
@@ -563,7 +619,17 @@ void prompt()
 }
 
 int main()
-{
+{pid_t shell_pgid = getpid();
+setpgid(shell_pgid, shell_pgid);
+
+
+
+tcsetpgrp(STDIN_FILENO, shell_pgid); 
+
+signal(SIGTTOU, SIG_IGN);  
+signal(SIGTTIN, SIG_IGN);  
+signal(SIGTSTP, SIG_IGN);  
+signal(SIGINT,  SIG_IGN);
     struct sigaction sa;
     sa.sa_handler = handle_sigchld;
     sigemptyset(&sa.sa_mask);
